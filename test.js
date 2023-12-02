@@ -33,5 +33,7 @@ launched.Launch({
   loader: {
     enable: false
   }
+}).then(proc => {
+  console.log(proc.spawnargs);
 });
 
