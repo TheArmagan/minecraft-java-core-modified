@@ -7,6 +7,7 @@ import os from 'os';
 import fs from 'fs';
 import AdmZip from 'adm-zip';
 import nodeFetch from 'node-fetch';
+import path from 'path';
 
 let MojangLib = { win32: "windows", darwin: "osx", linux: "linux" };
 let Arch = { x32: "32", x64: "64", arm: "32", arm64: "64" };
@@ -62,6 +63,7 @@ export default class Libraries {
             type: "CFILE",
             content: JSON.stringify(this.json)
         });
+
         return libraries;
     }
 
@@ -88,7 +90,7 @@ export default class Libraries {
         let natives = bundle.filter(mod => mod.type === "Native").map(mod => `${mod.path}`);
         if (natives.length === 0) return natives;
         let nativeFolder = (`${this.options.path}/versions/${this.json.id}/natives`).replace(/\\/g, "/");
-        if (!fs.existsSync(nativeFolder)) fs.mkdirSync(nativeFolder, { recursive: true, mode: 0o777 });
+        if (!fs.existsSync(nativeFolder)) await fs.promises.mkdir(nativeFolder, { recursive: true, mode: 0o777 });
 
         for (let native of natives) {
             let zip = new AdmZip(native);
@@ -96,10 +98,10 @@ export default class Libraries {
             for (let entry of entries) {
                 if (entry.entryName.startsWith("META-INF")) continue;
                 if (entry.isDirectory) {
-                    fs.mkdirSync(`${nativeFolder}/${entry.entryName}`, { recursive: true, mode: 0o777 });
+                    await fs.promises.mkdir(`${nativeFolder}/${entry.entryName}`, { recursive: true, mode: 0o777 });
                     continue
                 }
-                fs.writeFile(`${nativeFolder}/${entry.entryName}`, zip.readFile(entry), { encoding: "utf8", mode: 0o777 }, () => { });
+                await fs.promises.writeFile(`${nativeFolder}/${entry.entryName}`, zip.readFile(entry), { encoding: "utf8", mode: 0o777 });
             }
         }
         return natives;

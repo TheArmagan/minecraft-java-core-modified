@@ -6,7 +6,7 @@
 import { EventEmitter } from 'events';
 import path from 'path';
 import fs from 'fs';
-import { spawn } from 'child_process';
+import { CommonSpawnOptions, spawn } from 'child_process';
 
 import jsonMinecraft from './Minecraft/Minecraft-Json.js';
 import librariesMinecraft from './Minecraft/Minecraft-Libraries.js';
@@ -16,7 +16,7 @@ import javaMinecraft from './Minecraft/Minecraft-Java.js';
 import bundleMinecraft from './Minecraft/Minecraft-Bundle.js';
 import argumentsMinecraft from './Minecraft/Minecraft-Arguments.js';
 
-import { isold } from './utils/Index.js';
+import { isold as isOld } from './utils/Index.js';
 import Downloader from './utils/Downloader.js';
 
 type loader = {
@@ -55,6 +55,7 @@ type LaunchOPTS = {
     javaPath: string,
     screen: screen,
     memory: memory
+    spawnOptions?: CommonSpawnOptions
 };
 
 export default class Launch {
@@ -71,8 +72,8 @@ export default class Launch {
         const defaultOptions: LaunchOPTS = {
             url: null,
             authenticator: null,
-            timeout: 10000,
-            path: '.Minecraft',
+            timeout: 60000,
+            path: '.minecraft',
             version: 'latest_release',
             instance: null,
             detached: false,
@@ -104,6 +105,8 @@ export default class Launch {
                 min: '1G',
                 max: '2G'
             },
+
+            spawnOptions: {},
             ...opt,
         };
 
@@ -123,7 +126,7 @@ export default class Launch {
         if (!this.options.authenticator) return this.emit("error", { error: "Authenticator not found" });
         if (this.options.downloadFileMultiple < 1) this.options.downloadFileMultiple = 1
         if (this.options.downloadFileMultiple > 30) this.options.downloadFileMultiple = 30
-        this.start();
+        return this.start();
     }
 
 
@@ -159,10 +162,12 @@ export default class Launch {
         argumentsLogs = argumentsLogs.replaceAll(`${this.options.path}/`, '')
         this.emit('data', `Launching with arguments ${argumentsLogs}`);
 
-        let minecraftDebug = spawn(java, Arguments, { cwd: logs, detached: this.options.detached })
-        minecraftDebug.stdout.on('data', (data) => this.emit('data', data.toString('utf-8')))
-        minecraftDebug.stderr.on('data', (data) => this.emit('data', data.toString('utf-8')))
-        minecraftDebug.on('close', (code) => this.emit('close', 'Minecraft closed'))
+        let mcProc = spawn(java, Arguments, { cwd: logs, detached: this.options.detached, ...this.options.spawnOptions })
+        mcProc.stdout.on('data', (data) => this.emit('data', data.toString('utf-8')))
+        mcProc.stderr.on('data', (data) => this.emit('data', data.toString('utf-8')))
+        mcProc.on('close', (code) => this.emit('close', 'Minecraft closed'));
+
+        return mcProc;
     }
 
     async DownloadGame() {
@@ -238,7 +243,7 @@ export default class Launch {
         if (natives.length === 0) json.nativesList = false;
         else json.nativesList = true;
 
-        if (isold(json)) new assetsMinecraft(this.options).copyAssets(json);
+        if (isOld(json)) new assetsMinecraft(this.options).copyAssets(json);
 
         return {
             minecraftJson: json,
