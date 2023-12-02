@@ -55,17 +55,14 @@ type LaunchOPTS = {
     javaPath: string,
     screen: screen,
     memory: memory
-    spawnOptions?: CommonSpawnOptions
+    spawnOptions: CommonSpawnOptions
 };
 
-export default class Launch {
+export default class Launch extends EventEmitter {
     options: LaunchOPTS;
-    on: any;
-    emit: any;
 
     constructor() {
-        this.on = EventEmitter.prototype.on;
-        this.emit = EventEmitter.prototype.emit;
+        super();
     }
 
     async Launch(opt: LaunchOPTS) {

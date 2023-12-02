@@ -1,6 +1,6 @@
 {
     "name": "minecraft-java-core-modified",
-    "version": "3.8.3",
+    "version": "3.8.4",
     "types": "./build/Index.d.ts",
     "exports": {
         ".": {
