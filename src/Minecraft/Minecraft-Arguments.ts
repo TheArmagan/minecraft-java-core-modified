@@ -49,10 +49,10 @@ export default class MinecraftArguments {
             '${auth_session}': this.authenticator.access_token,
             '${auth_player_name}': this.authenticator.name,
             '${auth_uuid}': this.authenticator.uuid,
-            '${auth_xuid}': this.authenticator.meta.xuid || this.authenticator.access_token,
+            '${auth_xuid}': this.authenticator?.xboxAccount?.xuid || this.authenticator.access_token,
             '${user_properties}': this.authenticator.user_properties,
             '${user_type}': userType,
-            '${version_name}': json.id,
+            '${version_name}': loaderJson ? loaderJson.id : json.id,
             '${assets_index_name}': json.assetIndex.id,
             '${game_directory}': this.options.instance ? `${this.options.path}/instances/${this.options.instance}` : this.options.path,
             '${assets_root}': isold(json) ? `${this.options.path}/resources` : `${this.options.path}/assets`,
@@ -94,7 +94,10 @@ export default class MinecraftArguments {
             '-XX:G1ReservePercent=20',
             '-XX:MaxGCPauseMillis=50',
             '-XX:G1HeapRegionSize=32M',
-            '-Dfml.ignoreInvalidMinecraftCertificates=true'
+            '-Dfml.ignoreInvalidMinecraftCertificates=true',
+            `-Djna.tmpdir=${this.options.path}/versions/${json.id}/natives`,
+            `-Dorg.lwjgl.system.SharedLibraryExtractPath=${this.options.path}/versions/${json.id}/natives`,
+            `-Dio.netty.native.workdir=${this.options.path}/versions/${json.id}/natives`
         ]
 
         if (!json.minecraftArguments) {
@@ -119,13 +122,16 @@ export default class MinecraftArguments {
     }
 
     async GetClassPath(json: any, loaderJson: any) {
-        let classPath: any = []
+        let librariesList: string[] = []
+        let classPath: string[] = []
         let libraries: any = json.libraries;
 
         if (loaderJson?.libraries) libraries = loaderJson.libraries.concat(libraries);
-        libraries = libraries.filter((library: any, index: any, self: any) => index === self.findIndex((res: any) => res.name === library.name))
+        libraries = libraries.filter((library: any, index: any, self: any) => index === self.findIndex((res: any) => res.name === library.name));
 
         for (let lib of libraries) {
+            if (lib.loader && lib.name.startsWith('org.apache.logging.log4j:log4j-slf4j2-impl')) continue;
+
             if (lib.natives) {
                 let native = lib.natives[MojangLib[process.platform]];
                 if (!native) native = lib.natives[process.platform];
@@ -136,28 +142,36 @@ export default class MinecraftArguments {
                 }
             }
 
-
-            let path = getPathLibraries(lib.name)
+            let path = getPathLibraries(lib.name);
             if (lib.loader) {
-                classPath.push(`${lib.loader}/libraries/${path.path}/${path.name}`)
+                librariesList.push(`${lib.loader}/libraries/${path.path}/${path.name}`);
             } else {
-                classPath.push(`${this.options.path}/libraries/${path.path}/${path.name}`)
+                librariesList.push(`${this.options.path}/libraries/${path.path}/${path.name}`);
             }
         }
 
         if (loaderJson?.isOldForge) {
-            classPath.push(loaderJson?.jarPath)
-          }  else if (this.options.mcp) {
-            classPath.push(this.options.mcp)
+            librariesList.push(loaderJson?.jarPath);
+        } else if (this.options.mcp) {
+            librariesList.push(this.options.mcp);
         } else {
-            classPath.push(`${this.options.path}/versions/${json.id}/${json.id}.jar`)
+            librariesList.push(`${this.options.path}/versions/${json.id}/${json.id}.jar`);
         }
+
+
+        classPath = librariesList.filter((path: string) => {
+            let lib = path.split('/').pop();
+            if (lib && !classPath.includes(lib)) {
+                classPath.push(lib);
+                return true;
+            }
+            return false;
+        });
 
         return {
             classpath: [
                 `-cp`,
                 classPath.join(process.platform === 'win32' ? ';' : ':'),
-
             ],
             mainClass: loaderJson ? loaderJson.mainClass : json.mainClass
         }

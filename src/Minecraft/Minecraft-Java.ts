@@ -6,48 +6,56 @@
 import os from 'os';
 import nodeFetch from 'node-fetch';
 import path from 'path';
+import fs from 'fs';
+import EventEmitter from 'events';
+import Seven from 'node-7z';
+import sevenBin from '7zip-bin'
 
-export default class java {
+import { getFileHash } from '../utils/Index.js';
+import downloader from '../utils/Downloader.js';
+
+export default class JavaDownloader extends EventEmitter {
     options: any;
     constructor(options: any) {
+        super();
         this.options = options;
     }
 
-    async GetJsonJava(jsonversion: any) {
-        let version: any;
-        let files: any = [];
-        let javaVersionsJson = await nodeFetch("https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json").then(res => res.json())
+    async getJavaFiles(jsonversion: any) {
+        if (this.options.java.version) return await this.getJavaOther(jsonversion, this.options.java.version);
+        const archMapping = {
+            win32: { x64: 'windows-x64', ia32: 'windows-x86', arm64: 'windows-arm64' },
+            darwin: { x64: 'mac-os', arm64: this.options.intelEnabledMac ? "mac-os" : "mac-os-arm64" },
+            linux: { x64: 'linux', ia32: 'linux-i386' }
+        };
 
-        if (!jsonversion.javaVersion) jsonversion = "jre-legacy"
-        else jsonversion = jsonversion.javaVersion.component
+        const osPlatform = os.platform();
+        const arch = os.arch();
+        const osArchMapping = archMapping[osPlatform];
+        const javaVersion = jsonversion.javaVersion?.component || 'jre-legacy';
+        let files = [];
 
-        if (os.platform() == "win32") {
-            let arch = { x64: "windows-x64", ia32: "windows-x86" }
-            version = `jre-${javaVersionsJson[`${arch[os.arch()]}`][jsonversion][0]?.version?.name}`
-            if (version.includes('undefined')) return { error: true, message: "Java not found" };
-            javaVersionsJson = Object.entries((await nodeFetch(javaVersionsJson[`${arch[os.arch()]}`][jsonversion][0]?.manifest?.url).then(res => res.json())).files)
-        } else if (os.platform() == "darwin") {
-            let arch = { x64: "mac-os", arm64: this.options.intelEnabledMac ?  "mac-os" : "mac-os-arm64" }
-            version = `jre-${javaVersionsJson[`${arch[os.arch()]}`][jsonversion][0]?.version?.name}`
-            if (version.includes('undefined')) return { error: true, message: "Java not found" };
-            javaVersionsJson = Object.entries((await nodeFetch(javaVersionsJson[`${arch[os.arch()]}`][jsonversion][0]?.manifest?.url).then(res => res.json())).files)
-        } else if (os.platform() == "linux") {
-            let arch = { x64: "linux", ia32: "linux-i386" }
-            version = `jre-${javaVersionsJson[`${arch[os.arch()]}`][jsonversion][0]?.version?.name}`
-            if (version.includes('undefined')) return { error: true, message: "Java not found" };
-            javaVersionsJson = Object.entries((await nodeFetch(javaVersionsJson[`${arch[os.arch()]}`][jsonversion][0]?.manifest?.url).then(res => res.json())).files)
-        } else return console.log("OS not supported");
+        if (!osArchMapping) return await this.getJavaOther(jsonversion);
 
-        if (!javaVersionsJson) return { error: true, message: "Java not found" };
+        const archOs: any = osArchMapping[arch];
+        const javaVersionsJson = await nodeFetch(`https://launchermeta.mojang.com/v1/products/java-runtime/2ec0cc96c44e5a76b9c8b7c39df7210883d12871/all.json`).then(res => res.json());
 
-        let java = javaVersionsJson.find(file => file[0].endsWith(process.platform == "win32" ? "bin/javaw.exe" : "bin/java"))[0];
-        let toDelete = java.replace(process.platform == "win32" ? "bin/javaw.exe" : "bin/java", "");
+        const versionName = javaVersionsJson[archOs]?.[javaVersion]?.[0]?.version?.name;
 
-        for (let [path, info] of javaVersionsJson) {
+        if (!versionName) return await this.getJavaOther(jsonversion);
+
+        const manifestUrl = javaVersionsJson[archOs][javaVersion][0]?.manifest?.url;
+        const manifest = await nodeFetch(manifestUrl).then(res => res.json());
+        const javaFiles: any = Object.entries(manifest.files);
+
+        const java = javaFiles.find(([path]) => path.endsWith(process.platform === 'win32' ? 'bin/javaw.exe' : 'bin/java'))[0];
+        const toDelete = java.replace(process.platform === 'win32' ? 'bin/javaw.exe' : 'bin/java', '');
+
+        for (let [path, info] of javaFiles) {
             if (info.type == "directory") continue;
             if (!info.downloads) continue;
             let file: any = {};
-            file.path = `runtime/${version}-${process.platform}/${path.replace(toDelete, "")}`;
+            file.path = `runtime/jre-${versionName}-${archOs}/${path.replace(toDelete, "")}`;
             file.executable = info.executable;
             file.sha1 = info.downloads.raw.sha1;
             file.size = info.downloads.raw.size;
@@ -55,10 +63,121 @@ export default class java {
             file.type = "Java";
             files.push(file);
         }
-        return {
-            files: files,
-            path: path.resolve(this.options.path, `runtime/${version}-${process.platform}/bin/java${process.platform == "win32" ? ".exe" : ""}`),
-        };
 
+        return {
+            files,
+            path: path.resolve(this.options.path, `runtime/jre-${versionName}-${archOs}/bin/java`),
+        };
+    }
+
+
+    async getJavaOther(jsonversion: any, versionDownload?: any) {
+        const majorVersion = versionDownload || jsonversion.javaVersion?.majorVersion || 8;
+        const { platform, arch } = this.getPlatformArch();
+        const javaVersionURL = `https://api.adoptium.net/v3/assets/latest/${majorVersion}/hotspot?` + new URLSearchParams({
+            image_type: this.options.java.type,
+            architecture: arch,
+            os: platform
+        }).toString();
+        const javaVersions = await nodeFetch(javaVersionURL).then(res => res.json());
+
+        const java = javaVersions[0];
+
+        if (!java) return { error: true, message: "No Java found" };
+
+        const { checksum, link: url, name: fileName } = java.binary.package;
+        const pathFolder = path.resolve(this.options.path, `runtime/jre-${majorVersion}`);
+        const filePath = path.join(pathFolder, fileName);
+
+        let javaPath = path.join(pathFolder, 'bin', 'java');
+        if (platform === 'mac') javaPath = path.join(pathFolder, 'Contents', 'Home', 'bin', 'java');
+
+        if (!fs.existsSync(javaPath)) {
+            await this.verifyAndDownloadFile({ filePath, pathFolder, fileName, url, checksum });
+            await this.extract(filePath, pathFolder);
+            fs.unlinkSync(filePath);
+
+            if (filePath.endsWith('.tar.gz')) {
+                const tarFilePath = filePath.replace('.gz', '');
+                await this.extract(tarFilePath, pathFolder);
+                if (fs.existsSync(tarFilePath)) fs.unlinkSync(tarFilePath);
+            }
+
+            const extractedItems = fs.readdirSync(pathFolder);
+            if (extractedItems.length === 1) {
+                const extractedFolder = path.join(pathFolder, extractedItems[0]);
+                const stat = fs.statSync(extractedFolder);
+                if (stat.isDirectory()) {
+                    const subItems = fs.readdirSync(extractedFolder);
+                    for (const item of subItems) {
+                        const srcPath = path.join(extractedFolder, item);
+                        const destPath = path.join(pathFolder, item);
+                        fs.renameSync(srcPath, destPath);
+                    }
+                    fs.rmdirSync(extractedFolder);
+                }
+            }
+
+            if (platform !== 'windows') fs.chmodSync(javaPath, 0o755);
+        }
+
+        return { files: [], path: javaPath };
+    }
+
+    getPlatformArch() {
+        const platformMap = { win32: 'windows', darwin: 'mac', linux: 'linux' };
+        const archMap = { x64: 'x64', ia32: 'x32', arm64: 'aarch64', arm: 'arm' };
+        const platform = platformMap[os.platform()] || os.platform();
+        let arch = archMap[os.arch()] || os.arch();
+
+        if (os.platform() === 'darwin' && os.arch() === 'arm64' && this.options.intelEnabledMac) {
+            arch = 'x64';
+        }
+
+        return { platform, arch };
+    }
+
+    async verifyAndDownloadFile({ filePath, pathFolder, fileName, url, checksum }) {
+        if (fs.existsSync(filePath)) {
+            const existingChecksum = await getFileHash(filePath, 'sha256');
+            if (existingChecksum !== checksum) {
+                fs.unlinkSync(filePath);
+                fs.rmSync(pathFolder, { recursive: true, force: true });
+            }
+        }
+
+        if (!fs.existsSync(filePath)) {
+            fs.mkdirSync(pathFolder, { recursive: true });
+            const download = new downloader();
+
+            download.on('progress', (downloaded, size) => {
+                this.emit('progress', downloaded, size, fileName);
+            });
+
+            await download.downloadFile(url, pathFolder, fileName);
+        }
+
+        const downloadedChecksum = await getFileHash(filePath, 'sha256');
+        if (downloadedChecksum !== checksum) {
+            throw new Error("Java checksum failed");
+        }
+    }
+
+    async extract(filePath: string, destPath: string) {
+        if (os.platform() !== 'win32') fs.chmodSync(sevenBin.path7za, 0o755);
+
+        await new Promise<void>((resolve, reject) => {
+            const extract = Seven.extractFull(filePath, destPath, {
+                $bin: sevenBin.path7za,
+                recursive: true,
+                $progress: true,
+            });
+
+            extract.on('end', () => resolve());
+            extract.on('error', (err) => reject(err));
+            extract.on('progress', (progress) => {
+                if (progress.percent > 0) this.emit('extract', progress.percent);
+            });
+        });
     }
 }

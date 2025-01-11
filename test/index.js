@@ -1,4 +1,4 @@
-const { Microsoft, Launch, Mojang } = require('../build/Index');
+const { Microsoft, Launch } = require('../build/Index');
 const launch = new Launch();
 const fs = require('fs');
 
@@ -22,23 +22,24 @@ let mc
     }
 
     let opt = {
-        // url: 'https://launcher.luuxis.fr/files/?instance=hypixel',
+        // url: 'http://www.pokefree.fr/launcher_pokefree/files?instance=PokeFree',
         authenticator: mc,
         timeout: 10000,
+        instance: 'PokeFree',
         path: './Minecraft',
-        instance: 'PokeMoonX',
-        version: '1.6.4',
+        version: '1.16.5',
         detached: false,
         intelEnabledMac: true,
         downloadFileMultiple: 30,
 
         loader: {
             type: 'forge',
-            build: 'latest',
+            build: '1.16.5-36.2.35',
             enable: true,
+            path: './',
         },
 
-        verify: true,
+        verify: false,
         ignored: [
             'config',
             'essential',
@@ -54,11 +55,15 @@ let mc
         JVM_ARGS: [],
         GAME_ARGS: [],
 
-        javaPath: null,
+        java: {
+            path: null,
+            version: null,
+            type: 'jre',
+        },
 
         // screen: {
-        //    width: 1500,
-        //    height: 900
+        //     width: 1500,
+        //     height: 900
         // },
 
         memory: {
@@ -107,4 +112,4 @@ let mc
     launch.on('error', err => {
         console.log(err);
     });
-})()
+})();

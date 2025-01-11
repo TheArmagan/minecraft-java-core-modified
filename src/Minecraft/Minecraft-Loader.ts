@@ -5,21 +5,23 @@
 
 import { EventEmitter } from 'events';
 import loaderDownloader from '../Minecraft-Loader/index.js'
-
+import path from 'path'
 
 export default class MinecraftLoader {
     options: any;
     on: any;
     emit: any;
+    loaderPath: string;
     constructor(options: any) {
         this.options = options;
         this.on = EventEmitter.prototype.on;
         this.emit = EventEmitter.prototype.emit;
+        this.loaderPath = path.join(this.options.path, this.options.loader.path);
     }
 
     async GetLoader(version: any, javaPath: any) {
         let loader = new loaderDownloader({
-            path: `${this.options.path}/loader/${this.options.loader.type}`,
+            path: this.loaderPath,
             downloadFileMultiple: this.options.downloadFileMultiple,
             loader: {
                 type: this.options.loader.type,
@@ -32,14 +34,14 @@ export default class MinecraftLoader {
                 }
             }
         });
-        
+
         return await new Promise((resolve, reject) => {
             loader.install();
 
             loader.on('json', (json: any) => {
                 let loaderJson = json;
                 loaderJson.libraries = loaderJson.libraries.map((lib: any) => {
-                    lib.loader = `${this.options.path}/loader/${this.options.loader.type}`;
+                    lib.loader = this.loaderPath;
                     return lib;
                 });
                 resolve(loaderJson);
@@ -82,7 +84,7 @@ export default class MinecraftLoader {
         if (moddeArguments.jvm) Arguments.jvm = moddeArguments.jvm.map(jvm => {
             return jvm
                 .replace(/\${version_name}/g, version)
-                .replace(/\${library_directory}/g, `${this.options.path}/loader/${this.options.loader.type.toLowerCase()}/libraries`)
+                .replace(/\${library_directory}/g, `${this.loaderPath}/libraries`)
                 .replace(/\${classpath_separator}/g, process.platform === 'win32' ? ';' : ':');
         })
 

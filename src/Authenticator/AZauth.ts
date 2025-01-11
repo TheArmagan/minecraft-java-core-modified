@@ -7,8 +7,11 @@ import nodeFetch from 'node-fetch';
 
 export default class AZauth {
     url: string;
+    skinAPI: string;
+
     constructor(url: string) {
-        this.url = `${url}/api/auth`;
+        this.url = new URL('/api/auth', url).toString();
+        this.skinAPI = new URL('/api/skin-api/skins', url).toString();
     }
 
     async login(username: string, password: string, A2F: any = null) {
@@ -43,13 +46,20 @@ export default class AZauth {
             name: response.username,
             user_properties: '{}',
             user_info: {
+                id: response.id,
                 banned: response.banned,
                 money: response.money,
-                role: response.role
+                role: response.role,
+                verified: response.email_verified
             },
             meta: {
                 online: false,
                 type: 'AZauth',
+            },
+            profile: {
+                skins: [
+                    await this.skin(response.id),
+                ]
             }
         }
     }
@@ -80,13 +90,20 @@ export default class AZauth {
             name: response.username,
             user_properties: '{}',
             user_info: {
+                id: response.id,
                 banned: response.banned,
                 money: response.money,
-                role: response.role
+                role: response.role,
+                verified: response.email_verified
             },
             meta: {
                 online: false,
                 type: 'AZauth',
+            },
+            profile: {
+                skins: [
+                    await this.skin(response.id),
+                ]
             }
         }
     }
@@ -101,5 +118,26 @@ export default class AZauth {
         }).then((res: any) => res.json())
         if (auth.error) return false;
         return true
+    }
+
+    async skin(uuid: string) {
+        let response: any = await nodeFetch(`${this.skinAPI}/${uuid}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+        })
+
+        if (response.status == 404) {
+            return {
+                url: `${this.skinAPI}/${uuid}`
+            }
+        }
+
+        response = await response.buffer()
+        return {
+            url: `${this.skinAPI}/${uuid}`,
+            base64: "data:image/png;base64," + response.toString('base64')
+        }
     }
 }

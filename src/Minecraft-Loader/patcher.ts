@@ -3,17 +3,14 @@ import fs from 'fs'
 import path from 'path'
 import { EventEmitter } from 'events';
 
-import { getPathLibraries, getFileFromJar } from '../utils/Index.js';
+import { getPathLibraries, getFileFromArchive } from '../utils/Index.js';
 
-export default class forgePatcher {
+export default class forgePatcher extends EventEmitter {
     options: any;
-    on: any;
-    emit: any;
 
     constructor(options: any) {
+        super();
         this.options = options;
-        this.on = EventEmitter.prototype.on;
-        this.emit = EventEmitter.prototype.emit;
     }
 
     async patcher(profile: any, config: any, neoForgeOld: boolean = true) {
@@ -132,7 +129,7 @@ export default class forgePatcher {
     }
 
     async readJarManifest(jarPath: string) {
-        let extraction: any = await getFileFromJar(jarPath, 'META-INF/MANIFEST.MF');
+        let extraction: any = await getFileFromArchive(jarPath, 'META-INF/MANIFEST.MF');
 
         if (extraction) return (extraction.toString("utf8")).split('Main-Class: ')[1].split('\r\n')[0];
         return null;

@@ -3,7 +3,10 @@
  * @license CC-BY-NC 4.0 - https://creativecommons.org/licenses/by-nc/4.0/
  */
 
+import MinecraftNativeLinuxARM from './Minecraft-Lwjgl-Native.js';
+
 import nodeFetch from 'node-fetch';
+import os from 'os';
 
 export default class Json {
     options: any;
@@ -31,9 +34,12 @@ export default class Json {
             message: `Minecraft ${version} is not found.`
         };
 
+        let json: any = await nodeFetch(data.url).then(res => res.json());
+        if (os.platform() == 'linux' && os.arch().startsWith('arm')) json = await new MinecraftNativeLinuxARM(this.options).ProcessJson(json);
+
         return {
             InfoVersion: data,
-            json: await nodeFetch(data.url).then(res => res.json()),
+            json: json,
             version: version
         };
     }
